@@ -2,7 +2,7 @@
 /*
 Plugin Name: P7 Carrier Pickup
 Description: UPS + PPL pickup scheduler for Position7
-Version: 3.10
+Version: 3.12
 Author: Jan Charouz
 */
 
@@ -21,7 +21,7 @@ if (!defined('ABSPATH')) {
 */
 
 define('P7CP_OPTION', 'p7cp_settings');
-define('P7CP_VERSION', '3.10');
+define('P7CP_VERSION', '3.12');
 
 /**
  * Merged settings with defaults. wp-config.php constants override stored values.
@@ -363,7 +363,25 @@ function p7cp_render_settings_page()
             }
         }
         update_option('p7cp_ppl_location_address', $map);
-        echo '<div class="notice notice-success"><p>PPL pickup addresses saved.</p></div>';
+
+        // Populate each location's address fields from its assigned PPL address,
+        // so the Location details above fill in and UPS uses the same address.
+        $locs = (array) get_option('p7cp_locations', []);
+        foreach ($map as $loc_id => $addr) {
+            if (!isset($locs[$loc_id]) || !is_array($locs[$loc_id])) {
+                $locs[$loc_id] = [];
+            }
+            $locs[$loc_id]['company'] = $addr['name'];
+            $locs[$loc_id]['street']  = $addr['street'];
+            $locs[$loc_id]['city']    = $addr['city'];
+            $locs[$loc_id]['zip']     = $addr['zipCode'];
+            if (!empty($addr['country'])) {
+                $locs[$loc_id]['country'] = $addr['country'];
+            }
+        }
+        update_option('p7cp_locations', $locs);
+
+        echo '<div class="notice notice-success"><p>PPL pickup addresses saved, and Location details filled in from them.</p></div>';
     }
 
     $locked = [
@@ -2411,6 +2429,18 @@ function p7cp_ppl_fetch_addresses()
             'default' => !empty($a['default']),
         ];
     }
+
+    // De-duplicate: the API returns the same address once per registered code.
+    $deduped = [];
+    foreach ($out as $addr) {
+        $k = p7cp_ppl_address_key($addr);
+        if (!isset($deduped[$k])) {
+            $deduped[$k] = $addr;
+        } elseif (!empty($addr['default'])) {
+            $deduped[$k]['default'] = true;
+        }
+    }
+    $out = array_values($deduped);
 
     update_option('p7cp_ppl_addresses', $out, false);
 
